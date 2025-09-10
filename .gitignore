@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Large ML/DL models
+*.h5
+*.pt
+*.pkl
+*.onnx
+*.ckpt
+
+# Datasets
+*.csv
+*.npz
+*.zip
+*.tar.gz
+*.jpg
+*.jpeg
+*.png
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
