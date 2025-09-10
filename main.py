@@ -13,6 +13,7 @@ from friday_voice import FridayVoice
 from friday_brain import FridayBrain
 from friday_system import FridaySystem
 from friday_web import FridayWeb
+from friday_status import report_status
 
 
 def safe_load_env() -> None:
@@ -41,7 +42,7 @@ def main() -> None:
 	system = FridaySystem(voice)
 	web = FridayWeb()
 
-	voice.say("Boot sequence complete. Systems online.Hi Badri, Good to see you, Boss.")
+	voice.say("Boot sequence complete. Systems online. Namaste Badri, Good to see you.")
 
 	# Optional startup sound on Windows
 	try:
@@ -74,9 +75,17 @@ def main() -> None:
 				query = query[len(wake_word):].strip(",. !?")
 
 			# System-level shortcuts
-			if any(k in q_lower for k in ("exit", "quit", "shutdown friday")):
+			if any(k in q_lower for k in ("exit", "quit", "friday shutdown ")):
 				voice.say("Powering down FRIDAY interface. Ping me when you need me, Boss.")
 				break
+
+			# Status report command (only on explicit request)
+			if "status report" in q_lower or q_lower.strip() == "status":
+				try:
+					report_status(voice)
+				except Exception:
+					voice.say("Unable to compile the status report, Boss.")
+				continue
 
 			# Route intent: system, web, or brain
 			handled = False

@@ -1,6 +1,6 @@
 import os
 import datetime as dt
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import requests
 import feedparser
@@ -10,17 +10,21 @@ import wikipedia
 class FridayWeb:
 	def __init__(self) -> None:
 		self.weather_api_key = os.getenv("OPENWEATHER_API_KEY")
-		self.news_api_key = os.getenv("NEWSAPI_KEY")
+		self.news_api_key = os.getenv("NEWSAPI_KEY") or os.getenv("NEWS_API_KEY")
+		self.default_city = (os.getenv("FRIDAY_DEFAULT_CITY") or "Visakhapatnam").strip()
 
 	def try_answer(self, query: str) -> Optional[str]:
 		q = query.lower()
 		if "time" in q:
 			return self._get_time()
 		if "weather" in q:
-			city = self._extract_city(query)
+			city = self._extract_city(query) or self.default_city
 			return self._get_weather(city)
 		if "news" in q or "headlines" in q:
-			return self._get_news()
+			loc = None
+			if "visakhapatnam" in q or "vizag" in q or "local" in q:
+				loc = "local"
+			return self._get_news(locality=loc)
 		return None
 
 	def _get_time(self) -> str:
@@ -36,11 +40,22 @@ class FridayWeb:
 
 	def _get_weather(self, city: Optional[str]) -> str:
 		try:
-			# wttr.in provides concise weather text without API keys
-			if city:
-				url = f"https://wttr.in/{city}?format=3"
-			else:
-				url = "https://wttr.in/?format=3"
+			# Prefer OpenWeatherMap if key is set, else wttr.in fallback
+			if self.weather_api_key and city:
+				resp = requests.get(
+					"https://api.openweathermap.org/data/2.5/weather",
+					params={"q": city, "appid": self.weather_api_key, "units": "metric"},
+					timeout=8,
+				)
+				resp.raise_for_status()
+				data = resp.json()
+				temp = data.get("main", {}).get("temp")
+				desc = (data.get("weather") or [{}])[0].get("description", "").lower()
+				name = data.get("name") or city
+				if temp is not None and desc:
+					return f"Weather in {name} is {int(round(float(temp)))}°C with {desc}."
+			# Fallback: wttr.in concise text
+			url = f"https://wttr.in/{city}?format=3" if city else "https://wttr.in/?format=3"
 			resp = requests.get(url, timeout=8)
 			resp.raise_for_status()
 			brief = resp.text.strip()
@@ -50,14 +65,24 @@ class FridayWeb:
 		except Exception:
 			return "Weather uplink encountered interference. I'll try again soon."
 
-	def _get_news(self) -> str:
-		feeds: List[str] = [
-			"http://feeds.bbci.co.uk/news/world/rss.xml",
-			"http://feeds.reuters.com/reuters/topNews",
-			"http://rss.cnn.com/rss/edition.rss",
-			"https://www.thehindu.com/news/national/feeder/default.rss",
-			"https://indianexpress.com/feed/",
+	def _rss_feeds(self, locality: Optional[str]) -> List[str]:
+		if locality == "local":
+			return [
+				"https://timesofindia.indiatimes.com/rssfeeds/-2128839596.cms",  # Hyderabad/Andhra feed (closest regional)
+				"https://www.thehindu.com/news/cities/Visakhapatnam/feeder/default.rss",
+				"https://www.newindianexpress.com/Cities/Visakhapatnam/rssfeed/?id=341&getXmlFeed=true",
+			]
+		# National India feeds
+		return [
+			"http://feeds.bbci.co.uk/news/world/asia/india/rss.xml",
 			"https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+			"https://www.thehindu.com/news/national/feeder/default.rss",
+			"https://indianexpress.com/section/india/feed/",
+		]
+
+	def _get_news(self, locality: Optional[str] = None) -> str:
+		feeds: List[str] = [
+			* self._rss_feeds(locality)
 		]
 		try:
 			entries = []
@@ -84,7 +109,9 @@ class FridayWeb:
 			if not top:
 				return "No fresh headlines detected. The air is unusually calm, Boss."
 			joined = "; ".join(top)
-			return f"Latest headlines: {joined}. Want details on any of these?"
+			if locality == "local":
+				return f"Local headlines (Visakhapatnam region): {joined}."
+			return f"National headlines (India): {joined}."
 		except Exception:
 			return "News scanners encountered interference. I will re-sync the feeds shortly."
 	
